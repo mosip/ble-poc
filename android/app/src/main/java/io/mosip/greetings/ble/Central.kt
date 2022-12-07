@@ -9,9 +9,12 @@ import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import io.mosip.greetings.chat.ChatManager
+import io.mosip.greetings.cryptography.CipherBox
+import io.mosip.greetings.cryptography.CryptoBox
+import io.mosip.greetings.cryptography.CryptoBoxImpl
 import uniffi.identity.decrypt
 import uniffi.identity.encrypt
-import java.nio.charset.Charset
+
 
 // Sequence of actions
 // Scanning -> Connecting -> Discover Services -> Subscribes to Read Characteristic
@@ -128,8 +131,24 @@ class Central : ChatManager {
     }
 
     private val leScanCallback: ScanCallback = object : ScanCallback() {
+
+        // Scenario 1: Android 11 and Android 11
+                // serviceData -> {uuid -> adv data + scan resp} | TODO: Why is the serviceData is coming different?
+                // bytes -> adv data + scan resp + meta
+        // Scenario 2: Android 11 (Peripheral) -> Android 12 (Central)
+                // serviceData -> {uuid -> scan resp}
+                // bytes -> adv data + scan resp + meta
+        // Scenario 3: Android 12 (Peripheral) -> Android 9 (Central)
+                // serviceData -> {uuid -> scan resp}
+                // bytes -> adv data + scan resp + meta
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            Log.i("BLE Central", "Found the device: $result")
+            val advertisementPayload = result.scanRecord?.getServiceData(ParcelUuid(Peripheral.serviceUUID))?.toUByteArray()
+            val scanResponsePayload = result.scanRecord?.getServiceData(ParcelUuid(Peripheral.scanResponseUUID))?.toUByteArray()
+
+            Log.i("BLE Central", "Found the device: $result. The bytes are: ${result.scanRecord?.bytes?.toUByteArray()}")
+            Log.i("BLE Central", "PART: ADV_DATA: $result. The bytes are: $advertisementPayload")
+            Log.i("BLE Central", "PART: SCN_DATA: $result. The bytes are: $scanResponsePayload")
+
             stopScan()
 
             super.onScanResult(callbackType, result)

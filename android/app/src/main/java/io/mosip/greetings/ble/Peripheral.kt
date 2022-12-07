@@ -6,6 +6,7 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
+import android.os.Parcel
 import android.os.ParcelUuid
 import android.util.Log
 import io.mosip.greetings.chat.ChatManager
@@ -28,6 +29,7 @@ class Peripheral : ChatManager {
         @Volatile
         private lateinit var instance: Peripheral
         val serviceUUID: UUID = UUIDHelper.uuidFromString("AB29")
+        val scanResponseUUID: UUID = UUIDHelper.uuidFromString("AB2A")
         val WRITE_MESSAGE_CHAR_UUID = UUIDHelper.uuidFromString("2031")
         val READ_MESSAGE_CHAR_UUID = UUIDHelper.uuidFromString("2032")
 
@@ -48,27 +50,49 @@ class Peripheral : ChatManager {
             context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val mBluetoothAdapter = bluetoothManager.adapter
         advertiser = mBluetoothAdapter.bluetoothLeAdvertiser
+        Log.i("BLE Peripheral", "Max advertisement data length: ${mBluetoothAdapter.leMaximumAdvertisingDataLength}")
 
         gattServer = bluetoothManager.openGattServer(context, gattServerCallback)
 
         val service = getService()
         val settings = advertiseSettings()
-        val data = advertiseData(service)
+
+        //max 20bytes in advertisement
+        val advertisementPayload: ByteArray = (21..22).map { it.toByte() }.toByteArray()
+
+        //max 23bytes in scan response
+        val scanResponsePayload: ByteArray = (61..83).map { it.toByte() }.toByteArray()
+
+        val advertisementData = advertiseData(service.uuid, advertisementPayload)
+        val scanResponse = scanDataAdvertiseData(scanResponseUUID, scanResponsePayload)
+
         this.onConnect = onConnect
         this.updateLoadingText = updateLoadingText
 
-        advertiser.startAdvertising(settings, data, advertisingCallback)
-        Log.i("BLE Peripheral", "Started advertising: $data")
+        advertiser.startAdvertising(settings, advertisementData, advertisingCallback)
+//        advertiser.startAdvertising(settings, advertisementData,scanResponse, advertisingCallback)
+        Log.i("BLE Peripheral", "Started advertising: $advertisementData")
     }
 
     fun stop() {
         advertiser.stopAdvertising(advertisingCallback)
     }
 
-    private fun advertiseData(service: BluetoothGattService): AdvertiseData? {
+    private fun advertiseData(packetid: UUID?, payload: ByteArray): AdvertiseData? {
+        val parcelUuid = ParcelUuid(packetid)
         return AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
-            .addServiceUuid(ParcelUuid(service.uuid))
+            .setIncludeDeviceName(false)
+            .addServiceUuid(parcelUuid)
+            .addServiceData(ParcelUuid.fromString(UUIDHelper.UUID_BASE_SIG), payload)
+            .build()
+    }
+
+    private fun scanDataAdvertiseData(packetid: UUID?, payload: ByteArray): AdvertiseData? {
+        val parcelUuid = ParcelUuid(packetid)
+        return AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .addServiceUuid(parcelUuid)
+            .addServiceData(parcelUuid, payload)
             .build()
     }
 
@@ -208,6 +232,7 @@ class Peripheral : ChatManager {
                 Log.i("BLE Peripheral", "Device got disconnected. $device $newState")
             }
         }
+
     }
 
     private val advertisingCallback = object: AdvertiseCallback(){
